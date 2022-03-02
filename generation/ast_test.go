@@ -250,7 +250,8 @@ const myName: Name = "coder";`,
 } as const;
 export type Status = typeof Status[keyof typeof Status];`,
 		},
-		// Type enum expressions
+		// Type enum expressions.  Because this is a scalar enum comprising only
+		// basic Types this should return a disjunction string only.
 		{
 			Expr: []*Expr{
 				{
@@ -264,7 +265,7 @@ export type Status = typeof Status[keyof typeof Status];`,
 					},
 				},
 			},
-			Expected: `export type Status = string | boolean;`,
+			Expected: `string | boolean;`,
 		},
 		// Object enums
 		{

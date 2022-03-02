@@ -349,7 +349,33 @@ type Enum struct {
 	Members []AstKind
 }
 
-func (e Enum) AST() ([]*Expr, error) {
+// IsScalarType returns true if the enum is made out of basic scalar types, eg.
+// `string | number`, or `string | null`
+func (e Enum) IsScalarType() bool {
+	for _, m := range e.Members {
+		if _, ok := m.(Type); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// ScalarAST returns the disjunction AST for basic types.  This is used
+// when representing basic type enums.  Output:
+//
+// 	string | number
+func (e Enum) ScalarAST() (AstKind, error) {
+	return Binding{
+		Kind: BindingDisjunction,
+		// Add all members of the enum as an object.
+		Members: e.Members,
+	}, nil
+}
+
+// ExprAST is used when creating an enum that has concrete values or
+// complex data types.  It creates top-level exports using consts and
+// `keyof typeof` to generate enums.
+func (e Enum) ExprAST() ([]*Expr, error) {
 	// Create a key/value AST mapping for each member of the enum.
 	kv := make([]AstKind, len(e.Members))
 
@@ -361,7 +387,9 @@ func (e Enum) AST() ([]*Expr, error) {
 				Value: member,
 			}
 		default:
-			// Immediately return a disjunction of complex types.
+			// Immediately return a disjunction of complex types.  We may
+			// have some scalar values, but because we also have types we can't
+			// make an object containing values.
 			return []*Expr{
 				{
 					Data: Local{
@@ -409,7 +437,15 @@ func (e Enum) AST() ([]*Expr, error) {
 }
 
 func (e Enum) String() string {
-	ast, err := e.AST()
+	if e.IsScalarType() {
+		ast, err := e.ScalarAST()
+		if err != nil {
+			return err.Error()
+		}
+		return ast.String()
+	}
+
+	ast, err := e.ExprAST()
 	if err != nil {
 		return err.Error()
 	}

@@ -4,6 +4,8 @@ export const Status = {
 } as const;
 export type Status = typeof Status[keyof typeof Status];
 
+export type StrFloat = string | number;
+
 export interface Some {
   with: string;
 };
@@ -15,7 +17,9 @@ export const Action = {
 } as const;
 export type Action = typeof Action[keyof typeof Action];
 
-export type Mixed = string | number;
+export type Typeints = string | 0;
+
+export type Typestrs = "oh" | "hai" | string;
 
 export const Heyy = {
   WHAT: "what",
@@ -35,7 +39,10 @@ export interface Event {
     staticBool?: true;
     enabled: boolean;
     numeric: number;
-    mixed: Mixed;
+    typeenum: string | number;
+    nullable: string | number | null;
+    typeints: Typeints;
+    typestrs: Typestrs;
     friends: Array<{
       id: number;
       name: string;
