@@ -17,6 +17,13 @@ export const Action = {
 } as const;
 export type Action = typeof Action[keyof typeof Action];
 
+export const AnotherEnum = {
+  PENDING: "pending",
+  IN_PROGRESS: "in_progress",
+  DONE: "done",
+} as const;
+export type AnotherEnum = typeof AnotherEnum[keyof typeof AnotherEnum];
+
 export const Heyy = {
   WHAT: "what",
   DO: "do",
@@ -27,6 +34,7 @@ export interface Event {
   name: string;
   data: {
     action: Action;
+    another_enum: AnotherEnum;
     status: Status;
     number: number;
     static: "lol this is content";
