@@ -353,11 +353,11 @@ type Enum struct {
 // `string | number`, or `string | null`
 func (e Enum) IsScalarType() bool {
 	for _, m := range e.Members {
-		if _, ok := m.(Type); !ok {
-			return false
+		if _, ok := m.(Type); ok {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // ScalarAST returns the disjunction AST for basic types.  This is used

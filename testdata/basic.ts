@@ -17,10 +17,6 @@ export const Action = {
 } as const;
 export type Action = typeof Action[keyof typeof Action];
 
-export type Typeints = string | 0;
-
-export type Typestrs = "oh" | "hai" | string;
-
 export const Heyy = {
   WHAT: "what",
   DO: "do",
@@ -41,8 +37,8 @@ export interface Event {
     numeric: number;
     typeenum: string | number;
     nullable: string | number | null;
-    typeints: Typeints;
-    typestrs: Typestrs;
+    typeints: string | 0;
+    typestrs: "oh" | "hai" | string;
     friends: Array<{
       id: number;
       name: string;
