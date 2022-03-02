@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/ast"
@@ -12,6 +13,7 @@ import (
 
 var (
 	ctxIndentLevel = "indent"
+	ctxPath        = "path"
 )
 
 // MarshalString marshals a Cue string into a Typescript type string,
@@ -67,8 +69,13 @@ func MarshalCueValue(v cue.Value) (string, error) {
 // generateExprs creates a typescript expression for a top-level identifier.  This
 // differs to the 'generateAST' function as it wraps the created AST within an Expr,
 // representing a complete expression terminating with a semicolon.
+//
+// This is called when walking root-level fields.
 func generateExprs(ctx context.Context, label string, v cue.Value) ([]*Expr, error) {
-	label = strings.Title(strings.ToLower(label))
+	label, err := formatLabel(label)
+	if err != nil {
+		return nil, err
+	}
 
 	exprs, ast, err := generateAST(ctx, label, v)
 	if err != nil {
@@ -86,7 +93,7 @@ func generateExprs(ctx context.Context, label string, v cue.Value) ([]*Expr, err
 		if enum, ok := a.(Enum); ok {
 			// Enums define their own top-level Local AST as they create
 			// more than one export.
-			enumExprs, err := enum.AST()
+			enumExprs, err := enum.ExprAST()
 			if err != nil {
 				return nil, err
 			}
@@ -126,6 +133,10 @@ func generateAST(ctx context.Context, label string, v cue.Value) ([]*Expr, []Ast
 	// In order to properly generate Typescript AST for the value we need to
 	// walk Cue's AST.
 
+	// Embed the current path in context.  This allows us to debug which fields have
+	// issues nicely.
+	ctx = withPath(ctx, label)
+
 	switch v.IncompleteKind() {
 	case cue.StructKind:
 		exprs, ast, err := generateStructBinding(ctx, v)
@@ -159,6 +170,15 @@ func generateAST(ctx context.Context, label string, v cue.Value) ([]*Expr, []Ast
 				return nil, ast, err
 			}
 		case *ast.BasicLit:
+			// If this is "null", ensure that we generate a TS
+			// ident of null. despite being a value, "null" should
+			// be treated as a type.
+			if err := v.Null(); err == nil {
+				return nil, []AstKind{
+					Type{Value: "null"},
+				}, nil
+			}
+
 			// This is a const.
 			scalar, err := generateScalar(ctx, label, v)
 			if err != nil {
@@ -169,8 +189,12 @@ func generateAST(ctx context.Context, label string, v cue.Value) ([]*Expr, []Ast
 			return nil, []AstKind{
 				Type{Value: identToTS(ident.Name)},
 			}, nil
+		case *ast.UnaryExpr:
+			// TODO: This is a constraint.  Map this to a function which
+			// validates the type.
+			return nil, nil, nil
 		default:
-			return nil, nil, fmt.Errorf("unhandled cue ident: %T", ident)
+			return nil, nil, fmt.Errorf("unhandled cue ident for '%s': %T (%s)", path(ctx), ident, ident)
 		}
 	}
 	return nil, nil, fmt.Errorf("unhandled cue type: %v", v.IncompleteKind())
@@ -295,7 +319,10 @@ func generateArray(ctx context.Context, label string, v cue.Value) ([]*Expr, []A
 // generateEnum creates an enum definition which should be epanded to its
 // full Expr AST for a given value.
 func generateEnum(ctx context.Context, label string, v cue.Value) ([]AstKind, error) {
-	label = strings.Title(strings.ToLower(label))
+	label, err := formatLabel(label)
+	if err != nil {
+		return nil, err
+	}
 
 	_, vals := v.Expr()
 	members := make([]AstKind, len(vals))
@@ -358,22 +385,27 @@ func generateStructBinding(ctx context.Context, v cue.Value) ([]*Expr, []AstKind
 			created[0] = Type{Value: local.Name}
 		}
 
-		// A struct may contain enum definions.  Within typescript we want to pull
-		// those enum definitions to top-level types.  This means that we must return
-		// multiple top-level AST expressions.
+		// A struct may contain enum definions.  If the enum is only merging
+		// types (string | null) it's safe to inline.  If it contains values (
+		// complex structs, "foo" | "bar") we want to drag this out.
 		if enum, ok := created[0].(Enum); ok {
-			enumAst, err := enum.AST()
-			if err != nil {
-				return nil, nil, err
+
+			if enum.IsScalarType() {
+				// This type is safe to embed.
+			} else {
+				enumAst, err := enum.ExprAST()
+				if err != nil {
+					return nil, nil, err
+				}
+				expr = append(expr, enumAst...)
+				// Add two newlines between each enum and struct visually.
+				expr = append(expr, []*Expr{
+					{Data: Lit{Value: "\n"}},
+					{Data: Lit{Value: "\n"}},
+				}...)
+				// Use the enum name as the key's value.
+				created[0] = Type{Value: enum.Name}
 			}
-			expr = append(expr, enumAst...)
-			// Add two newlines between each enum and struct visually.
-			expr = append(expr, []*Expr{
-				{Data: Lit{Value: "\n"}},
-				{Data: Lit{Value: "\n"}},
-			}...)
-			// Use the enum name as the key's value.
-			created[0] = Type{Value: enum.Name}
 		}
 
 		// Wrap the AST value within a KeyValue.
@@ -402,6 +434,8 @@ func generateStructBinding(ctx context.Context, v cue.Value) ([]*Expr, []AstKind
 // identToTS returns Typescript type names from a given cue type name.
 func identToTS(name string) string {
 	switch name {
+	case "<nil>":
+		return "null"
 	case "bool":
 		return "boolean"
 	case "float", "int", "number":
@@ -444,4 +478,30 @@ func astToValue(r *cue.Runtime, ast ast.Node) (cue.Value, error) {
 		return cue.Value{}, err
 	}
 	return inst.Value(), nil
+}
+
+func path(ctx context.Context) string {
+	path, _ := ctx.Value(ctxPath).(string)
+	return path
+}
+
+func withPath(ctx context.Context, path string) context.Context {
+	existing, _ := ctx.Value(ctxPath).(string)
+	if existing == "" {
+		return context.WithValue(ctx, ctxPath, path)
+	}
+	return context.WithValue(ctx, ctxPath, existing+"."+path)
+}
+
+func formatLabel(label string) (string, error) {
+	if len(label) == 0 {
+		return "", fmt.Errorf("unable to generate typescript for unnamed type")
+	}
+
+	// If the first letter is lowercase, convert this to title.
+	if unicode.IsLower(rune(label[0])) {
+		label = strings.Title(strings.ToLower(label))
+	}
+
+	return label, nil
 }

@@ -1,5 +1,7 @@
 Status: "open" | "closed"
 
+StrFloat: string | float
+
 #Some: {
 	with: string
 	...
@@ -17,7 +19,10 @@ Status: "open" | "closed"
 		staticBool?:     true
 		enabled:         bool
 		numeric:         number
-		mixed:           string | int
+		typeenum:        string | int
+		nullable:        string | float | null
+		typeints:        string | 0
+		typestrs:        "oh" | "hai" | string
 		friends: [...{
 			id:   int
 			name: string
