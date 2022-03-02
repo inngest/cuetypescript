@@ -11,6 +11,7 @@ StrFloat: string | float
 	name: string
 	data: {
 		action:          "push" | "pull" | "rebase"
+		another_enum:    "pending" | "in_progress" | "done"
 		status:          Status
 		number:          uint & <=10
 		static:          "lol this is content"

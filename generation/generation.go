@@ -3,6 +3,7 @@ package generation
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -14,6 +15,8 @@ import (
 var (
 	ctxIndentLevel = "indent"
 	ctxPath        = "path"
+
+	nonAlphaRegexp = regexp.MustCompile("[^\\w]|_")
 )
 
 // MarshalString marshals a Cue string into a Typescript type string,
@@ -494,6 +497,8 @@ func withPath(ctx context.Context, path string) context.Context {
 }
 
 func formatLabel(label string) (string, error) {
+	label = titleCaseName(label)
+
 	if len(label) == 0 {
 		return "", fmt.Errorf("unable to generate typescript for unnamed type")
 	}
@@ -504,4 +509,10 @@ func formatLabel(label string) (string, error) {
 	}
 
 	return label, nil
+}
+
+func titleCaseName(name string) string {
+	name = nonAlphaRegexp.ReplaceAllString(name, " ")
+	name = strings.Title(name)
+	return strings.ReplaceAll(name, " ", "")
 }
